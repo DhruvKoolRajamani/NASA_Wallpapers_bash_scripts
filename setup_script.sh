@@ -41,11 +41,152 @@
 # Public License instead of this License.  But first, please read
 # <https://www.gnu.org/licenses/why-not-lgpl.html>.
 
-chmod +x $(pwd)/aotd_daily.sh
-crontab -l > nasa_wallpaper_script
-echo "" >> nasa_wallpaper_script
-echo "# Cron job to call the wallpaper set script daily" >> nasa_wallpaper_script
-echo "0 0 * * * $(pwd)/aotd_daily.sh >> $(pwd)/cron.log 2>&1
-" >> nasa_wallpaper_script
-crontab nasa_wallpaper_script
-rm nasa_wallpaper_script
+defPath=~/.Wallpapers
+
+minutes="*"
+hours="*"
+days="*"
+months="*"
+dow="*"
+
+addToCrontab() {
+    crontab -l > wallpaper_script
+    echo "" >> wallpaper_script
+    echo "# Cron job to call the wallpaper set script repeatedly" >> wallpaper_script
+    job="$minutes $hours $days $months $dow"
+    echo "$job $wPaperFolderPath/shuffle.sh >> $wPaperFolderPath/cron.log 2>&1" >> wallpaper_script
+    crontab wallpaper_script
+    rm wallpaper_script
+    echo "Added shuffle to cron job"
+    echo "To view cron logs, cat $wPaperFolderPath/cron.log"
+    exit
+}
+
+completeSetup() {
+    bashSourceFile=~/.wallpaper.sh
+    if [ ! -f "$bashSourceFile" ]; then
+        printf "%s" "export wPaperFolderPath=$defPath" > "$bashSourceFile"
+    fi
+    echo
+    echo "Giving privelages to shuffle script"
+    source $bashSourceFile
+    chmod +x $wPaperFolderPath/shuffle.sh
+    echo "Running Script"
+    $wPaperFolderPath/shuffle.sh
+    echo
+    echo "Do you want to add this script to a cronjob?"
+    echo "	[n/N/No/no to continue with default path]"
+    echo "	Any other key to continue to create a cronjob"
+    echo
+    read varCron
+    declare -a varNo=("n" "N" "NO" "no" "nO" "No")
+    for i in "${varNo}"; do
+        if [ "$varCron" == "$i" ]; then
+            echo "Setup completed!"
+            echo "Run ./shuffle.sh if you would like to manually shuffle the wallpapers."
+            echo
+            exit
+        fi
+    done
+    echo
+    check=$(crontab -l | grep -c 'shuffle') #   && echo 'true' || echo 'false'
+    if [ $check == '0' ]; then
+        echo "How often do you want to shuffle your wallpapers?"
+        echo "  Please use the following notation while entering the desired values:"
+        echo "      -m <minutes> -h <hours> -d <day> -M <month> -w <day of the week>"
+        echo "Example:"
+        echo "      -m 5 -h * -d * -M * -w *  -> Will run the chron job every 5 seconds"
+        echo ""
+        echo "The default value is every 10 minutes. "
+        echo "  [n/N/No/no to continue with default value]"
+        echo
+        read cronTime
+        declare -a varNo=("n" "N" "NO" "no" "nO" "No")
+        for i in "${varNo}"; do
+            if [ "$cronTime" == "$i" ]; then
+                echo "Adding default values to crontab"
+                addToCrontab
+                echo
+                exit
+            fi
+        done
+        echo
+        
+        str=$(echo "$cronTime" | sed 's/*/o/g')
+        echo "$str" > $wPaperFolderPath/tempCron.txt
+        echo "$(cat $wPaperFolderPath/tempCron.txt | sed 's/ //g')" > $wPaperFolderPath/tempCron.txt
+        str="$(cat $wPaperFolderPath/tempCron.txt)"
+        
+        unformatted=$(echo "$str" | sed 's/^.*-m//')
+        minutes=$(echo "$unformatted" | sed 's/-h.*//')
+        minutes=$(echo "$minutes" | sed 's/o/*/g')
+        
+        unformatted=$(echo "$str" | sed 's/^.*-h//')
+        hours=$(echo "$unformatted" | sed 's/-d.*//')
+        hours=$(echo "$hours" | sed 's/o/*/g')
+        
+        unformatted=$(echo "$str" | sed 's/^.*-d//')
+        days=$(echo "$unformatted" | sed 's/-M.*//')
+        days=$(echo "$days" | sed 's/o/*/g')
+
+        unformatted=$(echo "$str" | sed 's/^.*-M//')
+        months=$(echo "$unformatted" | sed 's/-w.*//')
+        months=$(echo "$months" | sed 's/o/*/g')
+
+        dow=$(echo "$str" | sed 's/^.*-w//')
+        dow=$(echo "$dow" | sed 's/o/*/g')
+
+	rm $wPaperFolderPath/tempCron.txt
+        
+        addToCrontab
+    fi
+}
+
+if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+    echo
+    echo "Please enter the path to this folder as the first argument"
+    echo "The default Path is $defPath"
+    exit
+    elif [ -z "$1" ]; then
+    echo
+    echo "The default path is $defPath, if you would like to choose a "
+    echo "different path, please enter the path below. "
+    echo "	[path to set a new path]"
+    echo "	[n/N/No/no to continue with default path]"
+    echo
+    read varPath
+    declare -a varNo=("n" "N" "NO" "no" "nO" "No")
+    for i in "${varNo}"; do
+        if [ "$varPath" == "$i" ]; then
+            completeSetup
+            echo
+            exit
+        fi
+    done
+    echo
+    defPath=$varPath
+    completeSetup
+    exit
+else
+    echo
+    echo "You have chosen $1 as the path, is this where your files are stored? "
+    echo "if you would like to set a different path, please enter the path below. "
+    echo "	[path to set a new path]"
+    echo "	[y/Y/Yes/yes to continue with $1]"
+    echo
+    read varPath
+    echo
+    declare -a varYes=("y" "Y" "YES" "Yes" "yes" "yES" "yeS" "yEs" "YEs")
+    for i in "${varYes}"; do
+        if [ "$varPath" == "$i" ]; then
+            defPath=$1
+            completeSetup
+            echo
+            exit
+        fi
+    done
+    defPath=$varPath
+    completeSetup
+    echo
+    exit
+fi
